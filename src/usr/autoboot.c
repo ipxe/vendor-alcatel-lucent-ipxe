@@ -1,3 +1,5 @@
+/*    $Alcatel-Lucent: autoboot.c,v 1.0.1 2011/06/16 20:58:30 binl Exp $    */
+
 /*
  * Copyright (C) 2006 Michael Brown <mbrown@fensystems.co.uk>.
  *
@@ -15,6 +17,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
+
+/* 2011-01-05: psBase hardcode to the ALU 9375 SCS file system */
 
 FILE_LICENCE ( GPL2_OR_LATER );
 
@@ -34,6 +38,26 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <usr/dhcpmgmt.h>
 #include <usr/imgmgmt.h>
 #include <usr/autoboot.h>
+
+#define ALU_MOD
+#ifdef ALU_MOD
+#include <ipxe/io.h> /* outb, get_memmap */
+
+#define PIIX4_RESET_PORT	0xcf9
+#define PIIX4_RESET_VAL		0x6
+
+#define BOOT_IMAGE "view/bootView/scs/cbBootImage"
+
+/* reset system via ich */
+void rst_via_ich_to_bios(void)
+{
+	/*
+	 * machine restart after this register is poked on the PIIX4
+	 */
+	outb(PIIX4_RESET_VAL, PIIX4_RESET_PORT);
+}
+
+#endif /* ALU_MOD */
 
 /** @file
  *
@@ -204,6 +228,64 @@ int uriboot ( struct uri *filename, struct uri *root_path, int drive,
 	return rc;
 }
 
+#ifdef ALU_MOD
+
+static void memReport(void) {
+        static int validInfo = 0;
+        static struct memory_map memmap;
+        int rc = -ENOENT;
+
+        if ( 0 == validInfo) {
+                get_memmap ( &memmap );
+                validInfo = 1;
+        }
+
+        printf("memory map in the system:\n"
+              "idx:    start         end\n");
+        for ( rc = 0 ; rc < (int)(memmap.count) ; rc++ ) {
+                printf("%2d  0x%08x-%08x [0x%08x-%08x]\n",
+                        rc,
+                        (int)(memmap.regions[rc].start >> 32),
+                        (int)(memmap.regions[rc].start),
+                        (int)(memmap.regions[rc].end >> 32),
+                        (int)(memmap.regions[rc].end) );
+        }
+        printf("\n");
+} 
+
+/**
+ * Boot from a network device and re-try a few times before giving up
+ *
+ * @v netdev		Network device
+ * @ret rc		Return status code
+ */
+static int netboot_withRetry ( struct net_device *netdev ) {
+        int cntRetry = 0;
+        const int maxRetry_c = 3;
+        int rc = -ENOENT;
+
+	memReport();
+
+	for( cntRetry = 0; cntRetry < maxRetry_c; cntRetry++ )
+	{
+		rc = netboot(netdev);
+                if ( 0 == rc ) {
+			return rc;
+                } else if ( (-ETIMEDOUT) == rc || (-ENOMEM) == rc ) {
+                        /* no point to re-try, reboot to BIOS */
+                        rst_via_ich_to_bios();
+                } else {
+			ifclose( netdev);
+                        printf("Booting failed %d, retry %d times\n", rc, cntRetry);
+                }
+	}
+
+        printf("Booting has been re-tried %d times\n", cntRetry);
+	return rc;
+}
+
+#endif /* ALU_MOD */
+
 /**
  * Close all open net devices
  *
@@ -240,6 +322,16 @@ struct uri * fetch_next_server_and_filename ( struct settings *settings ) {
 	/* Fetch filename setting */
 	fetch_string_setting ( settings, &filename_setting,
 			       buf, sizeof ( buf ) );
+
+        #ifdef ALU_MOD
+        /* 
+        DHCP returns netBootLdr file name will be "view/bootView/scs/netBootLdr"
+        CB boot image file name is "view/bootView/scs/cbBootImage"
+        The CB bootImage is one char longer
+         */
+	snprintf(buf, sizeof(buf), "%s", BOOT_IMAGE);
+        #endif
+
 	if ( buf[0] )
 		printf ( "Filename: %s\n", buf );
 
@@ -406,15 +498,30 @@ int autoboot ( void ) {
 
 	/* If we have an identifable boot device, try that first */
 	if ( ( boot_netdev = find_boot_netdev() ) )
+                #ifndef ALU_MOD
 		rc = netboot ( boot_netdev );
+                #else
+		rc = netboot_withRetry ( boot_netdev );
+                #endif
 
 	/* If that fails, try booting from any of the other devices */
 	for_each_netdev ( netdev ) {
 		if ( netdev == boot_netdev )
 			continue;
+                #ifndef ALU_MOD
 		rc = netboot ( netdev );
+                #else
+		rc = netboot_withRetry ( netdev );
+                #endif /* ALU_MOD */
 	}
 
+	#ifndef ALU_MOD
 	printf ( "No more network devices\n" );
+	#else   /* ALU MOD */
+	printf ( "No more network devices, reset to re-try\n" );
+        /* reset back to BIOS to restart */
+        rst_via_ich_to_bios();
+	#endif /* ALU_MOD */
+
 	return rc;
 }

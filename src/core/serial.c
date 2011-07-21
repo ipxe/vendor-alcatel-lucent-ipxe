@@ -1,3 +1,5 @@
+/*    $Alcatel-Lucent: serial.c,v 1.0.1 2011/06/16 20:58:30 binl Exp $    */
+
 /*
  * The serial port interface routines implement a simple polled i/o
  * interface to a standard serial port.  Due to the space restrictions
@@ -27,7 +29,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #endif
 
 #ifndef COMSPEED
-#define COMSPEED	9600
+#define COMSPEED	115200
 #endif
 
 #ifndef COMDATA

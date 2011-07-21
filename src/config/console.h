@@ -1,3 +1,5 @@
+/*    $Alcatel-Lucent: console.h,v 1.0.1 2011/06/16 20:58:30 binl Exp $    */
+
 #ifndef CONFIG_CONSOLE_H
 #define CONFIG_CONSOLE_H
 
@@ -15,7 +17,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <config/defaults.h>
 
 //#define	CONSOLE_PCBIOS		/* Default BIOS console */
-//#define	CONSOLE_SERIAL		/* Serial port */
+#define	CONSOLE_SERIAL		/* Serial port */
 //#define	CONSOLE_DIRECT_VGA	/* Direct access to VGA card */
 //#define	CONSOLE_BTEXT		/* Who knows what this does? */
 //#define	CONSOLE_PC_KBD		/* Direct access to PC keyboard */
